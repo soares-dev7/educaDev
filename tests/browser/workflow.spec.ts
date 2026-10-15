@@ -1,0 +1,94 @@
+import { expect, test } from '@playwright/test';
+
+test('dashboard responsivo, navegação móvel e busca acessível', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /Olá, dev/ })).toBeVisible();
+  await expect(page.locator('.track-card')).toHaveCount(3);
+  await page.screenshot({ path: 'test-results/dashboard-desktop.png', fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: /O que você quer aprender/ }).click();
+  await page.getByRole('textbox', { name: 'Buscar na plataforma' }).fill('HTML');
+  await expect(page.getByRole('button', { name: /Trilha Primeiros passos no front-end/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'test-results/dashboard-mobile.png', fullPage: true, animations: 'disabled' });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Abrir menu', exact: true }).click();
+  await page.getByRole('link', { name: 'Trilhas de aprendizado' }).click();
+  await expect(page.getByRole('heading', { name: 'Seu próximo passo começa aqui.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Explorar trilha' }).first().click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Uma página começa com HTML' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('aula concluída persiste no reload e desafio só atribui XP à resposta correta', async ({ page }) => {
+  await page.goto('/#trilhas');
+  await page.getByRole('button', { name: 'Explorar trilha' }).first().click();
+  await page.getByRole('button', { name: /Marcar como concluída/ }).click();
+  await expect(page.getByRole('button', { name: 'Aula concluída', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.locator('.learning-summary')).toContainText('1 de 8 aulas concluídas');
+  await page.getByRole('link', { name: 'Desafios', exact: false }).click();
+  await page.getByRole('button', { name: 'Resolver desafio' }).first().click();
+  await page.getByRole('radio').nth(0).check();
+  await page.getByRole('button', { name: 'Conferir resposta' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Cada tentativa' })).toBeVisible();
+  await page.getByRole('radio').nth(1).check();
+  await page.getByRole('button', { name: 'Conferir resposta' }).click();
+  await expect(page.getByText('Boa! Você chegou à resposta.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Desafio concluído' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.goto('/#inicio');
+  await expect(page.locator('.stat-card').last()).toContainText('90');
+  await page.reload();
+  await expect(page.locator('.stat-card').last()).toContainText('90');
+});
+
+test('perfil e projeto são editáveis e projetos podem ser removidos', async ({ page }) => {
+  await page.goto('/#perfil');
+  await page.getByLabel('Como quer ser chamado(a)?').fill('Dev Teste');
+  await page.getByLabel('Título profissional').fill('Estudante de front-end');
+  await page.getByLabel('Conte um pouco da sua jornada').fill('Aprendendo a construir interfaces.');
+  await page.getByLabel('Link do GitHub').fill('https://github.com/example');
+  await page.getByLabel('Tecnologias', { exact: false }).fill('HTML, CSS');
+  await page.getByRole('button', { name: 'Salvar perfil' }).click();
+  await expect(page.locator('.profile-summary')).toContainText('Dev Teste');
+  await page.getByRole('button', { name: 'Adicionar projeto', exact: true }).click();
+  await page.getByLabel('Nome do projeto').fill('Minha página pessoal');
+  await page.getByLabel('O que você construiu?').fill('Uma página com HTML e CSS.');
+  await page.getByLabel('Link do projeto ou repositório').fill('https://example.com/projeto');
+  await page.getByRole('dialog').getByLabel('Tecnologias').fill('HTML, CSS');
+  await page.getByRole('button', { name: 'Adicionar ao meu perfil' }).click();
+  await expect(page.getByRole('heading', { name: 'Minha página pessoal' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Minha página pessoal' })).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Excluir projeto Minha página pessoal' }).click();
+  await expect(page.getByRole('heading', { name: 'Minha página pessoal' })).not.toBeVisible();
+});
+
+test('publicação, curtida, favoritos de vagas e referências externas funcionam', async ({ page }) => {
+  await page.goto('/#comunidade');
+  await page.getByLabel('Sua publicação').fill('Hoje concluí minha primeira aula de HTML!');
+  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  await expect(page.getByText('Hoje concluí minha primeira aula de HTML!', { exact: true })).toBeVisible();
+  await page.locator('.post-card').first().getByRole('button', { name: 'Curtir' }).click();
+  await expect(page.locator('.post-card').first().getByRole('button', { name: 'Você curtiu' })).toBeVisible();
+  await page.goto('/#oportunidades');
+  await expect(page.getByText('Oportunidades fictícias para demonstração.')).toBeVisible();
+  await page.getByRole('button', { name: 'Salvar oportunidade: Estágio em desenvolvimento front-end' }).click();
+  await page.getByRole('button', { name: 'Salvas', exact: true }).click();
+  await expect(page.locator('.job-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Estágio em desenvolvimento front-end', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('Este exemplo não aceita candidaturas.');
+  await page.keyboard.press('Escape');
+  await page.goto('/#documentacao');
+  await expect(page.getByRole('link', { name: /Abrir documentação/ })).toHaveCount(6);
+  await page.getByLabel('Buscar documentação').fill('React');
+  await expect(page.locator('.resource-card')).toHaveCount(1);
+  await expect(page.getByRole('link', { name: /Abrir documentação/ })).toHaveAttribute('href', 'https://pt-br.react.dev/learn');
+});
